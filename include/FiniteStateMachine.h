@@ -2,6 +2,7 @@
 #include <iostream>
 #include <variant>
 #include <string>
+#include <optional>
 
 template<typename T, typename... Ts>
 struct is_one_of;
@@ -18,7 +19,7 @@ concept OneOf = is_one_of<T, Ts...>::value;
 
 template <typename Event, typename Child, typename State>
 concept HasHandleEventForState = requires(Event const& event, Child & child, State & state) {
-    { child.handle_event(event, state) } -> std::same_as<void>;
+    { child.handle_event_impl(event, state) } -> std::same_as<void>;
 };
 
 template <typename Event, typename Child, typename ... States>
@@ -45,27 +46,24 @@ public:
     }
 
     template<HasHandleEvent<Child, States...> Event>
-    void handle_event(Event const& event) {
-        std::visit([this, &event](auto& state) { static_cast<Child*>(this)->handle_event(event, state); }, state_);
+    auto handle_event(Event const& event) -> decltype(auto) {
+        return std::visit([this, &event](auto& state) { return static_cast<Child*>(this)->handle_event_impl(event, state); }, state_);
     }
 
     template<ReadOnlyStateFunction<States...> Func>
-    void visit(Func&& func) {
-        std::visit(func, state_);
+    auto visit(Func&& func) const -> decltype(auto) {
+        return std::visit(func, state_);
     }
 
     template<HasHandleEvent<Child, States...> Event>
-    bool safe_handle_event(Event const& event) {
-        try
-        {
+    auto safe_handle_event(Event const& event) -> decltype(auto) {
+        try {
             this->handle_event(event);
             return true;
-        }
-        catch (std::exception const& e)
-        {
+        } catch (std::exception const& e) {
             std::cout << e.what() << std::endl;
             return false;
-        }
+        }  
     }
 
 private:

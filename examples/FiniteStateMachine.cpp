@@ -18,25 +18,25 @@ public:
     StateMachineImpl() : StateMachine<StateMachineImpl, Idle, Processing, Finished>(Idle{}) {}
 
     //Graph
-    void handle_event(Start const& event, Idle const&) {
+    void handle_event_impl(Start const& event, Idle const&) {
         this->transition_to(Processing{ "Task1" });
     }
 
-    void handle_event(Complete const& event, Processing const&) {
+    void handle_event_impl(Complete const& event, Processing const&) {
         this->transition_to(Finished{});
     }
 
-    void handle_event(ChangeTask const& event, Processing& state) {
+    void handle_event_impl(ChangeTask const& event, Processing& state) {
         state.task = "Task2";
     }
 
-    void handle_event(Reset const& event, Finished const&) {
+    void handle_event_impl(Reset const& event, Finished const&) {
         this->transition_to(Idle{});
     }
 
     //Stopgap
     template<typename Event, typename State>
-    void handle_event(Event const& event, State const& state) {
+    void handle_event_impl(Event const& event, State const& state) {
         throw std::runtime_error(std::string("Unhandled event ") + typeid(event).name() + " in State " + typeid(state).name());
     }
 };
