@@ -39,6 +39,16 @@ public:
     void handle_event_impl(Event const& event, State const& state) {
         throw std::runtime_error(std::string("Unhandled event ") + typeid(event).name() + " in State " + typeid(state).name());
     }
+
+    template<typename NewState>
+    void on_new_state(NewState const&) {
+
+    }
+
+    template<typename OldState>
+    void on_leaving_state(OldState const&) {
+
+    }
 };
 
 class StatePrinter

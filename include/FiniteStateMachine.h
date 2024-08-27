@@ -35,6 +35,7 @@ concept ReadOnlyStateFunction = (ReadOnlyStateFunctionForState<Func, States> && 
 
 template<typename Child, typename ... States>
 class StateMachine {
+protected:
     using State = std::variant<States...>;
 public:
     template<OneOf<States...> State>
@@ -42,7 +43,9 @@ public:
 
     template <OneOf<States...> NewState>
     void transition_to(NewState&& new_state) {
+        std::visit([this](auto& state) { static_cast<Child*>(this)->on_leaving_state(state); }, state_);
         state_ = std::forward<NewState>(new_state);
+        std::visit([this](auto& state) { static_cast<Child*>(this)->on_new_state(state); }, state_);
     }
 
     template<HasHandleEvent<Child, States...> Event>
