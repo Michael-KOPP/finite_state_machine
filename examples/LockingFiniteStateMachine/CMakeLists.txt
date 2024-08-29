@@ -4,5 +4,5 @@ set(CMAKE_CXX_STANDARD 20)
 
 add_executable(LockingFSM "FiniteStateMachine.cpp")
 
-target_link_libraries(LockingFSM PRIVATE FiniteStateMachine)
+target_link_libraries(LockingFSM PRIVATE finite_state_machine)
 

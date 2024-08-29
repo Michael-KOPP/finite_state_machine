@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.8)
 
-project ("FiniteStateMachine")
+project ("finite_state_machine")
 
-add_subdirectory(include)
+add_subdirectory(src)
 add_subdirectory(examples)

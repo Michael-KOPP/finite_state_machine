@@ -1,8 +1,9 @@
-﻿#include "FiniteStateMachine.h"
 #include <chrono>
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+
+#include <fsm/finite_state_machine.hpp>
 
 //States
 struct Idle {};
