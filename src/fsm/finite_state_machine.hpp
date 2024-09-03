@@ -30,6 +30,42 @@ concept ReadOnlyStateFunctionForState = requires(Func && func, State const& stat
     { func(state) };
 };
 
+template<typename T, typename State>
+struct has_on_leaving_state_handler {
+
+    template<typename V>
+    static constexpr auto test(State * s) -> std::is_same<decltype(std::declval<V>().on_leaving_state(*s)), void>;
+
+    template<typename V>
+    static constexpr auto test(...) -> std::false_type;
+
+    static constexpr bool value = decltype(test<T>(nullptr))::value;
+};
+
+template<typename T, typename State>
+constexpr bool has_on_leaving_state_handler_v = has_on_leaving_state_handler<T, State>::value;
+
+template<typename T, typename State>
+concept HasOnLeavingStateHandler = has_on_leaving_state_handler_v<T, State>;
+
+template<typename T, typename State>
+struct has_on_new_state_handler {
+
+    template<typename V>
+    static constexpr auto test(State * s) -> std::is_same<decltype(std::declval<V>().on_new_state(*s)), void>;
+
+    template<typename V>
+    static constexpr auto test(...) -> std::false_type;
+
+    static constexpr bool value = decltype(test<T>(nullptr))::value;
+};
+
+template<typename T, typename State>
+constexpr bool has_on_new_state_handler_v = has_on_new_state_handler<T, State>::value;
+
+template<typename T, typename State>
+concept HasOnNewStateHandler = has_on_new_state_handler_v<T, State>;
+
 template<typename Func, typename ... States>
 concept ReadOnlyStateFunction = (ReadOnlyStateFunctionForState<Func, States> && ...);
 
@@ -43,9 +79,9 @@ public:
 
     template <OneOf<States...> NewState>
     void transition_to(NewState&& new_state) {
-        std::visit([this](auto& state) { static_cast<Child*>(this)->on_leaving_state(state); }, state_);
+        std::visit([this](auto&& state) { this->call_leaving_state_handler_if_exists<Child>(state); }, state_);
         state_ = std::forward<NewState>(new_state);
-        std::visit([this](auto& state) { static_cast<Child*>(this)->on_new_state(state); }, state_);
+        std::visit([this](auto&& state) { this->call_new_state_handler_if_exists<Child>(state); }, state_);
     }
 
     template<HasHandleEvent<Child, States...> Event>
@@ -67,6 +103,19 @@ public:
             std::cout << e.what() << std::endl;
             return false;
         }  
+    }
+private:
+    template<typename C, typename _State>
+    void call_leaving_state_handler_if_exists(_State&& state) {
+        if constexpr(HasOnLeavingStateHandler<C, std::remove_cvref_t<_State>>) {
+            static_cast<Child*>(this)->on_leaving_state(state);
+        }
+    }
+    template<typename C, typename _State>
+    void call_new_state_handler_if_exists(_State&& state) {
+        if constexpr (HasOnNewStateHandler<C, std::remove_cvref_t<_State>>) {
+            static_cast<Child*>(this)->on_new_state(state);
+        }
     }
 
 private:
