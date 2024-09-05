@@ -19,7 +19,7 @@ concept OneOf = is_one_of<T, Ts...>::value;
 
 template <typename Event, typename Child, typename State>
 concept HasHandleEventForState = requires(Event const& event, Child & child, State & state) {
-    { child.handle_event_impl(event, state) } -> std::same_as<void>;
+    { child.handle_event_impl(event, state) };
 };
 
 template <typename Event, typename Child, typename ... States>
@@ -72,5 +72,3 @@ public:
 private:
     State state_;
 };
-
-// TODO: Référencez ici les en-têtes supplémentaires nécessaires à votre programme.
