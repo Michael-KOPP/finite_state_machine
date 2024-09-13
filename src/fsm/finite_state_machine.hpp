@@ -1,8 +1,7 @@
 ﻿#pragma once
 #include <iostream>
 #include <variant>
-#include <string>
-#include <optional>
+#include <mutex>
 
 template<typename T, typename... Ts>
 struct is_one_of;
@@ -18,9 +17,22 @@ template<typename T, typename... Ts>
 concept OneOf = is_one_of<T, Ts...>::value;
 
 template <typename Event, typename Child, typename State>
-concept HasHandleEventForState = requires(Event const& event, Child & child, State & state) {
-    { child.handle_event_impl(event, state) };
+struct has_handle_event_for_state
+{
+    template<typename E, typename C, typename S>
+    static constexpr auto test(E const * e, C * c, S * s) -> decltype(c->handle_event_impl(*e, *s), std::true_type{});
+
+    template<typename E, typename C, typename S>
+    static constexpr auto test(...) -> std::false_type;
+
+    static constexpr bool value = decltype(test<Event, Child, State>(nullptr, nullptr, nullptr))::value;
 };
+
+template <typename Event, typename Child, typename State>
+constexpr bool has_handle_event_for_state_v = has_handle_event_for_state<Event, Child, State>::value;
+
+template <typename Event, typename Child, typename State>
+concept HasHandleEventForState = has_handle_event_for_state_v<Event, Child, State>;
 
 template <typename Event, typename Child, typename ... States>
 concept HasHandleEvent = (HasHandleEventForState<Event, Child, States> && ...);
@@ -69,6 +81,21 @@ concept HasOnNewStateHandler = has_on_new_state_handler_v<T, State>;
 template<typename Func, typename ... States>
 concept ReadOnlyStateFunction = (ReadOnlyStateFunctionForState<Func, States> && ...);
 
+#define ENABLE_PRIVATE_HANDLE_EVENT_IMPL     template <typename Event, typename Child, typename State> \
+friend struct has_handle_event_for_state;
+
+
+#define ENABLE_PRIVATE_ON_NEW_STATE     template<typename T, typename State> \
+                                        friend struct has_on_new_state_handler;
+
+#define ENABLE_PRIVATE_ON_LEAVING_STATE     template<typename T, typename State> \
+                                        friend struct has_on_leaving_state_handler;
+
+#define ENABLE_PRIVATE_IMPL friend class StateMachine; \
+                            ENABLE_PRIVATE_HANDLE_EVENT_IMPL \
+                            ENABLE_PRIVATE_ON_NEW_STATE \
+                            ENABLE_PRIVATE_ON_LEAVING_STATE
+
 template<typename Child, typename ... States>
 class StateMachine {
 protected:
@@ -76,6 +103,25 @@ protected:
 public:
     template<OneOf<States...> State>
     StateMachine(State&& initState) : state_(std::forward<State>(initState)) {}
+
+    StateMachine(StateMachine const& other) {
+        std::scoped_lock lock(_mutex);
+        state_ = other.state_;
+    }
+
+    StateMachine(StateMachine&& other) {
+        swap(other);
+    }
+
+    StateMachine& operator=(StateMachine other) {
+        swap(other);
+        return *this;
+    }
+
+    void swap(StateMachine& other) {
+        std::scoped_lock lock(_mutex);
+        state_.swap(other.state_);
+    }
 
     template <OneOf<States...> NewState>
     void transition_to(NewState&& new_state) {
@@ -86,11 +132,17 @@ public:
 
     template<HasHandleEvent<Child, States...> Event>
     auto handle_event(Event const& event) -> decltype(auto) {
+        std::scoped_lock lock(_mutex);
         return std::visit([this, &event](auto& state) { return static_cast<Child*>(this)->handle_event_impl(event, state); }, state_);
     }
 
+    /**
+     * @warning using handle_event in visit will deadlock
+     * @return @func return value
+     */
     template<ReadOnlyStateFunction<States...> Func>
     auto visit(Func&& func) const -> decltype(auto) {
+        std::scoped_lock lock(_mutex);
         return std::visit(func, state_);
     }
 
@@ -120,4 +172,5 @@ private:
 
 private:
     State state_;
+    mutable std::mutex _mutex;
 };
