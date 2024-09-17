@@ -172,5 +172,5 @@ private:
 
 private:
     State state_;
-    mutable std::mutex _mutex;
+    mutable std::recursive_mutex _mutex;
 };
