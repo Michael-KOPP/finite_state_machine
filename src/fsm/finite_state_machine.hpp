@@ -123,13 +123,6 @@ public:
         state_.swap(other.state_);
     }
 
-    template <OneOf<States...> NewState>
-    void transition_to(NewState&& new_state) {
-        std::visit([this](auto&& state) { this->call_leaving_state_handler_if_exists<Child>(state); }, state_);
-        state_ = std::forward<NewState>(new_state);
-        std::visit([this](auto&& state) { this->call_new_state_handler_if_exists<Child>(state); }, state_);
-    }
-
     template<HasHandleEvent<Child, States...> Event>
     auto handle_event(Event const& event) -> decltype(auto) {
         std::scoped_lock lock(_mutex);
@@ -155,6 +148,13 @@ public:
             std::cout << e.what() << std::endl;
             return false;
         }  
+    }
+protected:
+    template <OneOf<States...> NewState>
+    void transition_to(NewState&& new_state) {
+        std::visit([this](auto&& state) { this->call_leaving_state_handler_if_exists<Child>(state); }, state_);
+        state_ = std::forward<NewState>(new_state);
+        std::visit([this](auto&& state) { this->call_new_state_handler_if_exists<Child>(state); }, state_);
     }
 private:
     template<typename C, typename _State>
