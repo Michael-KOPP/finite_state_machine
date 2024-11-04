@@ -11,10 +11,18 @@ struct is_one_of<T> : std::false_type {};
 
 template<typename T, typename First, typename... Rest>
 struct is_one_of<T, First, Rest...>
-    : std::conditional_t<std::is_same_v<T, First>, std::true_type, is_one_of<T, Rest...>> {};
+    : std::conditional_t<std::is_same_v<T, First>, std::true_type, is_one_of<T, Rest...>> {
+};
 
 template<typename T, typename... Ts>
 concept OneOf = is_one_of<T, Ts...>::value;
+
+template<typename ... States>
+struct is_one_of_predicate
+{
+    template<typename T>
+    using predicate = is_one_of<T, States...>;
+};
 
 template <typename Event, typename Child, typename State>
 struct has_handle_event_for_state
@@ -137,6 +145,24 @@ public:
     auto visit(Func&& func) const -> decltype(auto) {
         std::scoped_lock lock(_mutex);
         return std::visit(func, state_);
+    }
+
+    template<template<typename> typename Pred, typename Func>
+    auto exec_if(Func&& func) const -> decltype(auto) {
+        return visit([&func](auto&& state) {
+            using Stt = std::remove_cvref_t<decltype(state)>;
+            if constexpr(Pred<Stt>::value) {
+                return func();
+            }
+            else {
+                return std::invoke_result_t<Func>();
+            }
+        });
+    }
+
+    template<typename ... _States, typename Func>
+    auto exec_if_one_of(Func&& func) const -> decltype(auto) {
+        return exec_if<is_one_of_predicate<_States...>::predicate, Func>(std::move(func));
     }
 
     template<HasHandleEvent<Child, States...> Event>
