@@ -3,6 +3,14 @@
 #include <variant>
 #include <mutex>
 
+template<typename... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+
+template<typename... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 template<typename T, typename... Ts>
 struct is_one_of;
 
