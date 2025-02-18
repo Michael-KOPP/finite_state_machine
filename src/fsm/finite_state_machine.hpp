@@ -2,6 +2,14 @@
 #include <iostream>
 #include <variant>
 #include <mutex>
+template<typename... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+
+template<typename... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
 
 template<typename T, typename... Ts>
 struct is_one_of;
@@ -11,8 +19,7 @@ struct is_one_of<T> : std::false_type {};
 
 template<typename T, typename First, typename... Rest>
 struct is_one_of<T, First, Rest...>
-    : std::conditional_t<std::is_same_v<T, First>, std::true_type, is_one_of<T, Rest...>> {
-};
+    : std::conditional_t<std::is_same_v<T, First>, std::true_type, is_one_of<T, Rest...>> {};
 
 template<typename T, typename... Ts>
 concept OneOf = is_one_of<T, Ts...>::value;
@@ -94,18 +101,18 @@ friend struct has_handle_event_for_state;
 
 
 #define ENABLE_PRIVATE_ON_NEW_STATE     template<typename T, typename State> \
-                                        friend struct has_on_new_state_handler;
+friend struct has_on_new_state_handler;
 
 #define ENABLE_PRIVATE_ON_LEAVING_STATE     template<typename T, typename State> \
-                                        friend struct has_on_leaving_state_handler;
+friend struct has_on_leaving_state_handler;
 
 #define ENABLE_PRIVATE_IMPL friend class StateMachine; \
-                            ENABLE_PRIVATE_HANDLE_EVENT_IMPL \
-                            ENABLE_PRIVATE_ON_NEW_STATE \
-                            ENABLE_PRIVATE_ON_LEAVING_STATE
+ENABLE_PRIVATE_HANDLE_EVENT_IMPL \
+    ENABLE_PRIVATE_ON_NEW_STATE \
+    ENABLE_PRIVATE_ON_LEAVING_STATE
 
-template<typename Child, typename ... States>
-class StateMachine {
+    template<typename Child, typename ... States>
+    class StateMachine {
 protected:
     using State = std::variant<States...>;
 public:
@@ -173,7 +180,7 @@ public:
         } catch (std::exception const& e) {
             std::cout << e.what() << std::endl;
             return false;
-        }  
+        }
     }
 protected:
     template <OneOf<States...> NewState>
@@ -199,4 +206,81 @@ private:
 private:
     State state_;
     mutable std::recursive_mutex _mutex;
+};
+
+#include <vector>
+#include <functional>
+
+template <typename T>
+struct FunctionTraits;
+
+// Cas d'une fonction classique ou d'un lambda
+template <typename Ret, typename Arg>
+struct FunctionTraits<Ret(Arg)> {
+    using ArgumentType = Arg;
+};
+
+// Cas d'un pointeur de fonction
+template <typename Ret, typename Arg>
+struct FunctionTraits<Ret(*)(Arg)> {
+    using ArgumentType = Arg;
+};
+
+// Cas d'un std::function
+template <typename Ret, typename Arg>
+struct FunctionTraits<std::function<Ret(Arg)>> {
+    using ArgumentType = Arg;
+};
+
+// Cas général pour les lambdas et foncteurs
+template <typename T>
+struct FunctionTraits : FunctionTraits<decltype(&T::operator())> {};
+
+// Cas d'un opérateur de fonction
+template <typename C, typename Ret, typename Arg>
+struct FunctionTraits<Ret(C::*)(Arg) const> {
+    using ArgumentType = Arg;
+};
+
+template<typename T>
+struct TypedId {
+    using type = T;
+
+    size_t id;
+};
+
+template<typename Child, typename ... States>
+class NotifyingStateMachine : public StateMachine<Child, States...> {
+public:
+    using StateMachine<Child, States...>::StateMachine;
+
+    template<typename Handler>
+    auto on_state(Handler&& handler) -> decltype(auto) {
+        using State = std::remove_cvref_t<typename FunctionTraits<Handler>::ArgumentType>;
+        auto& [prevId, vec] = std::get<std::pair<size_t, std::vector<std::pair<size_t, std::function<void(State const&)>>>>>(_stateHandlers);
+        vec.push_back(std::make_pair(++prevId, std::forward<Handler>(handler)));
+        return TypedId<State>(prevId);
+    }
+
+    template<typename _TypeId>
+    auto unregister(_TypeId id) -> bool {
+        auto& [prevId, vec] = std::get<std::pair<size_t, std::vector<std::pair<size_t, std::function<void(typename _TypeId::type const&)>>>>>(_stateHandlers);
+        auto toErase = std::find_if(vec.begin(), vec.end(), [&](auto& pair) {return pair.first == id.id;});
+        if(toErase != vec.cend()) {
+            vec.erase(toErase);
+            return true;
+        }
+        return false;
+    }
+
+    template<OneOf<States...> State>
+    void on_new_state(State const& state) {
+        auto& [prevId, vec] = std::get<std::pair<size_t, std::vector<std::pair<size_t, std::function<void(State const&)>>>>>(_stateHandlers);
+
+        for(auto& [id, handler] : vec) {
+            handler(state);
+        }
+    }
+private:
+    std::tuple<std::pair<size_t, std::vector<std::pair<size_t, std::function<void(States const&)>>>>...> _stateHandlers;
 };
